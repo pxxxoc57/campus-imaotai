@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -99,7 +100,10 @@ public class IShopServiceImpl extends ServiceImpl<IShopMapper, IShop> implements
             return cacheSession.toString();
         }
 
-        long dayTime = LocalDate.now().atStartOfDay().toInstant(ZoneOffset.of("+8")).toEpochMilli();
+        // 使用东八区确保请求中国当天的 session
+        long dayTime = LocalDate.now(ZoneId.of("Asia/Shanghai"))
+                .atStartOfDay(ZoneId.of("Asia/Shanghai"))
+                .toInstant().toEpochMilli();
         String res;
         try {
             res = HttpUtil.get("https://static.moutai519.com.cn/mt-backend/xhr/front/mall/index/session/get/" + dayTime);
@@ -136,13 +140,16 @@ public class IShopServiceImpl extends ServiceImpl<IShopMapper, IShop> implements
 
         iItemMapper.truncateItem();
         JSONArray itemList = data.getJSONArray("itemList");
-        if (itemList != null && !itemList.isEmpty()) {
-            for (Object obj : itemList) {
-                JSONObject item = (JSONObject) obj;
-                IItem iItem = new IItem(item);
-                iItemMapper.insert(iItem);
-            }
+        if (itemList == null || itemList.isEmpty()) {
+            log.warn("i茅台session接口返回的itemList为空, dayTime={}, 请确认当前时段是否有可预约商品", dayTime);
+            throw new ServiceException("i茅台暂无预约商品数据，请稍后再试（通常每日9:00后会有数据）");
         }
+        for (Object obj : itemList) {
+            JSONObject item = (JSONObject) obj;
+            IItem iItem = new IItem(item);
+            iItemMapper.insert(iItem);
+        }
+        log.info("刷新预约商品列表成功，共{}条", itemList.size());
 
         return mtSessionId;
     }
@@ -178,8 +185,9 @@ public class IShopServiceImpl extends ServiceImpl<IShopMapper, IShop> implements
     }
 
     public List<IMTItemInfo> reGetShopsByProvince(String province, String itemId) {
-
-        long dayTime = LocalDate.now().atStartOfDay().toInstant(ZoneOffset.of("+8")).toEpochMilli();
+        long dayTime = LocalDate.now(ZoneId.of("Asia/Shanghai"))
+                .atStartOfDay(ZoneId.of("Asia/Shanghai"))
+                .toInstant().toEpochMilli();
 
         String url = "https://static.moutai519.com.cn/mt-backend/xhr/front/mall/shop/list/slim/v3/" + getCurrentSessionId() + "/" + province + "/" + itemId + "/" + dayTime;
 
