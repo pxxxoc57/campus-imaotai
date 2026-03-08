@@ -94,35 +94,57 @@ public class IShopServiceImpl extends ServiceImpl<IShopMapper, IShop> implements
 
     @Override
     public String getCurrentSessionId() {
-        String mtSessionId = Convert.toStr(redisCache.getCacheObject(IMTCacheConstants.MT_SESSION_ID));
-
-        long dayTime = LocalDate.now().atStartOfDay().toInstant(ZoneOffset.of("+8")).toEpochMilli();
-        if (StringUtils.isNotEmpty(mtSessionId)) {
-            return mtSessionId;
+        Object cacheSession = redisCache.getCacheObject(IMTCacheConstants.MT_SESSION_ID);
+        if (cacheSession != null && StringUtils.isNotEmpty(cacheSession.toString()) && !"null".equals(cacheSession.toString())) {
+            return cacheSession.toString();
         }
 
-        String res = HttpUtil.get("https://static.moutai519.com.cn/mt-backend/xhr/front/mall/index/session/get/" + dayTime);
-        //替换 current_session_id 673 ['data']['sessionId']
-        JSONObject jsonObject = JSONObject.parseObject(res);
+        long dayTime = LocalDate.now().atStartOfDay().toInstant(ZoneOffset.of("+8")).toEpochMilli();
+        String res;
+        try {
+            res = HttpUtil.get("https://static.moutai519.com.cn/mt-backend/xhr/front/mall/index/session/get/" + dayTime);
+        } catch (Exception e) {
+            log.error("获取i茅台session失败", e);
+            throw new ServiceException("获取i茅台session失败: " + e.getMessage());
+        }
 
-        if (jsonObject.getString("code").equals("2000")) {
-            JSONObject data = jsonObject.getJSONObject("data");
-            mtSessionId = data.getString("sessionId");
-            redisCache.setCacheObject(IMTCacheConstants.MT_SESSION_ID, mtSessionId, 2, TimeUnit.HOURS);
+        JSONObject jsonObject;
+        try {
+            jsonObject = JSONObject.parseObject(res);
+        } catch (JSONException e) {
+            log.error("解析i茅台session响应失败: {}", res);
+            throw new ServiceException("解析i茅台API响应失败，请稍后重试");
+        }
 
-            iItemMapper.truncateItem();
-            //item插入数据库
-            JSONArray itemList = data.getJSONArray("itemList");
+        if (jsonObject == null || !"2000".equals(jsonObject.getString("code"))) {
+            String errMsg = jsonObject != null ? jsonObject.getString("message") : "API无响应";
+            log.error("i茅台session接口返回异常: code={}, message={}", jsonObject != null ? jsonObject.getString("code") : null, errMsg);
+            throw new ServiceException("i茅台接口异常: " + (StringUtils.isNotEmpty(errMsg) ? errMsg : "请稍后重试"));
+        }
+
+        JSONObject data = jsonObject.getJSONObject("data");
+        if (data == null) {
+            log.error("i茅台session响应data为空");
+            throw new ServiceException("i茅台接口返回数据异常");
+        }
+
+        String mtSessionId = data.getString("sessionId");
+        if (StringUtils.isEmpty(mtSessionId)) {
+            throw new ServiceException("i茅台sessionId为空");
+        }
+        redisCache.setCacheObject(IMTCacheConstants.MT_SESSION_ID, mtSessionId, 2, TimeUnit.HOURS);
+
+        iItemMapper.truncateItem();
+        JSONArray itemList = data.getJSONArray("itemList");
+        if (itemList != null && !itemList.isEmpty()) {
             for (Object obj : itemList) {
                 JSONObject item = (JSONObject) obj;
                 IItem iItem = new IItem(item);
                 iItemMapper.insert(iItem);
             }
-
         }
 
         return mtSessionId;
-
     }
 
     @Override

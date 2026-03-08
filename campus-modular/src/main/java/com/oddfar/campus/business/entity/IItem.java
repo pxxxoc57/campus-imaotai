@@ -2,6 +2,7 @@ package com.oddfar.campus.business.entity;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.oddfar.campus.common.utils.StringUtils;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
@@ -52,10 +53,12 @@ public class IItem {
     }
 
     public IItem(JSONObject item) {
-        this.itemCode = item.getString("itemCode");
-        this.title =  item.getString("title");;
-        this.content =  item.getString("content");;
-        this.picture =  item.getString("picture");;
+        // i茅台API可能返回 itemCode 或 itemId，兼容两者
+        String code = item.getString("itemCode");
+        this.itemCode = StringUtils.isNotEmpty(code) ? code : item.getString("itemId");
+        this.title = item.getString("title");
+        this.content = item.getString("content");
+        this.picture = item.getString("picture");
         this.createTime = new Date();
     }
 }
