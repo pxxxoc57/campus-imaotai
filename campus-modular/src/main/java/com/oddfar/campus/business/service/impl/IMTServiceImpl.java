@@ -93,6 +93,7 @@ public class IMTServiceImpl implements IMTService {
             mtVersion = matcher.group(1);
             mtVersion = mtVersion.replace("版本 ", "");
         }
+        mtVersion=mtVersion==null?"1.9.2":mtVersion; //加这一行 1.9.2是当前最新app版本号
         redisCache.setCacheObject(IMTCacheConstants.MT_VERSION, mtVersion);
 
         return mtVersion;
